@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MIDI Multi-Track to Single Piano Converter</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome for Studio Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              400: '#818cf8',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+              900: '#312e81',
+            },
+            studio: {
+              bg: '#0f1117',
+              panel: '#181b24',
+              border: '#2a2f3d',
+              accent: '#6366f1',
+              green: '#10b981',
+              amber: '#f59e0b',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #0f1117;
+      color: #e2e8f0;
+      font-family: 'Inter', sans-serif;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #181b24;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #2a2f3d;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #3b4254;
+    }
+
+    .glass-panel {
+      background: rgba(24, 27, 36, 0.75);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .drop-active {
+      border-color: #6366f1 !important;
+      background-color: rgba(99, 102, 241, 0.08) !important;
+    }
+
+    /* Waveform/Visualizer bar animation */
+    @keyframes pulse-bar {
+      0%, 100% { height: 10%; }
+      50% { height: 90%; }
+    }
+    .playing .v-bar {
+      animation: pulse-bar 1.2s ease-in-out infinite;
+    }
+    .v-bar:nth-child(1) { animation-delay: 0.0s; }
+    .v-bar:nth-child(2) { animation-delay: 0.2s; }
+    .v-bar:nth-child(3) { animation-delay: 0.4s; }
+    .v-bar:nth-child(4) { animation-delay: 0.1s; }
+    .v-bar:nth-child(5) { animation-delay: 0.3s; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between p-4 sm:p-6 md:p-8 selection:bg-brand-500 selection:text-white">
+
+  <!-- Main Container -->
+  <div class="max-w-5xl mx-auto w-full space-y-6">
+
+    <!-- Header -->
+    <header class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-studio-border">
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-400 flex items-center justify-center shadow-lg shadow-brand-500/20">
+          <i class="fa-solid me-0 fa-music text-white text-xl"></i>
+        </div>
+        <div>
+          <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+            MIDI Piano Unifier
+            <span class="text-xs px-2 py-0.5 rounded-full bg-brand-500/20 text-brand-400 font-mono border border-brand-500/30">Client-Side</span>
+          </h1>
+          <p class="text-xs sm:text-sm text-gray-400">Convert multi-track MIDI files into a single consolidated piano track instantly.</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-3 text-xs text-gray-400 font-mono">
+        <span class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-studio-panel border border-studio-border">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span> 100% In-Browser Privacy
+        </span>
+      </div>
+    </header>
+
+    <!-- App Grid Layout -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- Left Column: Upload & Input File Info (5 Cols) -->
+      <div class="lg:col-span-5 space-y-6">
+
+        <!-- Drop Zone -->
+        <div id="drop-zone" class="glass-panel rounded-2xl p-6 sm:p-8 text-center border-2 border-dashed border-studio-border hover:border-brand-500/50 transition-all duration-300 cursor-pointer relative group">
+          <input type="file" id="file-input" accept=".mid,.midi" class="hidden" />
+          
+          <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-studio-panel flex items-center justify-center text-brand-400 group-hover:scale-110 group-hover:bg-brand-500 group-hover:text-white transition-all duration-300 border border-studio-border shadow-inner">
+            <i class="fa-solid fa-cloud-arrow-up text-2xl"></i>
+          </div>
+
+          <h3 class="text-base font-semibold text-white mb-1">Drag & Drop MIDI File</h3>
+          <p class="text-xs text-gray-400 mb-4">Supports <span class="font-mono text-gray-300">.mid</span> and <span class="font-mono text-gray-300">.midi</span> format files</p>
+          
+          <button class="px-4 py-2 text-xs font-medium bg-studio-panel hover:bg-studio-border text-gray-200 rounded-lg transition-colors border border-studio-border inline-flex items-center gap-2">
+            <i class="fa-solid fa-folder-open"></i> Browse File
+          </button>
+        </div>
+
+        <!-- File Details Panel -->
+        <div id="file-details-panel" class="glass-panel rounded-2xl p-5 space-y-4 hidden transition-all">
+          <div class="flex items-center justify-between border-b border-studio-border pb-3">
+            <div class="flex items-center gap-3 overflow-hidden">
+              <i class="fa-solid fa-file-audio text-brand-400 text-lg flex-shrink-0"></i>
+              <span id="info-filename" class="text-sm font-medium text-white truncate">filename.mid</span>
+            </div>
+            <span id="info-size" class="text-xs font-mono text-gray-400 bg-studio-panel px-2 py-1 rounded border border-studio-border flex-shrink-0">0 KB</span>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2 text-center">
+            <div class="bg-studio-panel/60 p-2.5 rounded-xl border border-studio-border">
+              <span class="text-[10px] uppercase font-mono tracking-wider text-gray-400 block mb-0.5">Tracks</span>
+              <span id="info-tracks" class="text-base font-semibold text-white font-mono">-</span>
+            </div>
+            <div class="bg-studio-panel/60 p-2.5 rounded-xl border border-studio-border">
+              <span class="text-[10px] uppercase font-mono tracking-wider text-gray-400 block mb-0.5">Notes</span>
+              <span id="info-notes" class="text-base font-semibold text-brand-400 font-mono">-</span>
+            </div>
+            <div class="bg-studio-panel/60 p-2.5 rounded-xl border border-studio-border">
+              <span class="text-[10px] uppercase font-mono tracking-wider text-gray-400 block mb-0.5">PPQ/Ticks</span>
+              <span id="info-ppq" class="text-base font-semibold text-white font-mono">-</span>
+            </div>
+          </div>
+
+          <!-- Process Action Button -->
+          <button id="btn-convert" class="w-full py-3 px-4 bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-500 hover:to-brand-400 text-white font-semibold rounded-xl text-sm shadow-lg shadow-brand-500/25 transition-all duration-200 flex items-center justify-center gap-2 active:scale-[0.98]">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> Convert to Single Piano Track
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Right Column: Conversion & Preview Output (7 Cols) -->
+      <div class="lg:col-span-7 space-y-6">
+
+        <!-- Console / Status Log -->
+        <div class="glass-panel rounded-2xl p-5 flex flex-col h-[280px]">
+          <div class="flex items-center justify-between mb-3 pb-2 border-b border-studio-border">
+            <div class="flex items-center gap-2">
+              <div class="w-2.5 h-2.5 rounded-full bg-brand-500 animate-pulse"></div>
+              <span class="text-xs font-mono font-semibold uppercase tracking-wider text-gray-300">Conversion Console</span>
+            </div>
+            <button id="btn-clear-log" class="text-[11px] text-gray-500 hover:text-gray-300 transition-colors">Clear Log</button>
+          </div>
+          <div id="console-output" class="flex-1 font-mono text-xs overflow-y-auto space-y-1.5 text-gray-300 pr-1">
+            <div class="text-gray-500 italic">Ready for input. Upload a MIDI file to begin parsing...</div>
+          </div>
+        </div>
+
+        <!-- Audio Player & Download Card -->
+        <div id="result-card" class="glass-panel rounded-2xl p-5 space-y-4 opacity-50 pointer-events-none transition-all duration-300 border-l-4 border-l-brand-500">
+          <div class="flex items-center justify-between">
+            <div>
+              <h4 class="text-sm font-semibold text-white flex items-center gap-2">
+                Converted Piano File
+                <span id="conversion-status-badge" class="hidden text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Ready</span>
+              </h4>
+              <p id="result-filename" class="text-xs text-gray-400 font-mono mt-0.5">piano_single_output.mid</p>
+            </div>
+
+            <!-- Waveform visualizer bars -->
+            <div id="v-bars" class="flex items-center gap-1 h-6">
+              <div class="v-bar w-1 bg-brand-400 rounded-full h-2 transition-all"></div>
+              <div class="v-bar w-1 bg-brand-400 rounded-full h-3 transition-all"></div>
+              <div class="v-bar w-1 bg-brand-400 rounded-full h-5 transition-all"></div>
+              <div class="v-bar w-1 bg-brand-400 rounded-full h-2 transition-all"></div>
+              <div class="v-bar w-1 bg-brand-400 rounded-full h-4 transition-all"></div>
+            </div>
+          </div>
+
+          <!-- Controls Section -->
+          <div class="flex flex-wrap items-center gap-3 pt-2">
+            <!-- Play/Stop Preview Button -->
+            <button id="btn-play" class="flex-1 py-2.5 px-4 bg-studio-panel hover:bg-studio-border text-white text-xs font-semibold rounded-xl border border-studio-border transition-all flex items-center justify-center gap-2">
+              <i class="fa-solid fa-play text-brand-400"></i> Preview Piano
+            </button>
+
+            <!-- Download Button -->
+            <button id="btn-download" class="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl shadow-lg shadow-emerald-600/20 transition-all flex items-center justify-center gap-2">
+              <i class="fa-solid fa-download"></i> Download .MID
+            </button>
+          </div>
+
+          <!-- Progress bar for audio preview -->
+          <div class="space-y-1 pt-1">
+            <div class="w-full bg-studio-panel h-1.5 rounded-full overflow-hidden border border-studio-border">
+              <div id="audio-progress" class="bg-brand-500 h-full w-0 transition-all duration-100"></div>
+            </div>
+            <div class="flex justify-between text-[10px] font-mono text-gray-500">
+              <span id="player-time-current">0:00</span>
+              <span id="player-time-total">0:00</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <footer class="text-center text-xs text-gray-500 pt-6 border-t border-studio-border">
+      Pure Web standard application — zero server processing. Converts Multi-Track standard MIDI files into consolidated Format 0 single piano tracks.
+    </footer>
+
+  </div>
+
+  <!-- JavaScript Logic -->
+  <script>
+    /**
+     * PURE JAVASCRIPT MIDI PARSER & WRITER
+     * Handles MIDI file parsing, event absolute timing, track merging,
+     * program change mapping to Piano (0), delta time recalculation, and binary creation.
+     */
+
+    // State Variables
+    let rawMidiArrayBuffer = null;
+    let originalFileName = "";
+    let parsedMidiData = null;
+    let convertedMidiBytes = null;
+    let convertedMidiUrl = null;
+
+    // Web Audio Synthesizer State
+    let audioCtx = null;
+    let isPlaying = false;
+    let playTimeoutIds = [];
+    let startTime = 0;
+    let totalDuration = 0;
+    let playbackInterval = null;
+
+    // DOM Elements
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const fileDetailsPanel = document.getElementById('file-details-panel');
+    const infoFilename = document.getElementById('info-filename');
+    const infoSize = document.getElementById('info-size');
+    const infoTracks = document.getElementById('info-tracks');
+    const infoNotes = document.getElementById('info-notes');
+    const infoPpq = document.getElementById('info-ppq');
+    const btnConvert = document.getElementById('btn-convert');
+    const consoleOutput = document.getElementById('console-output');
+    const btnClearLog = document.getElementById('btn-clear-log');
+    const resultCard = document.getElementById('result-card');
+    const resultFilename = document.getElementById('result-filename');
+    const conversionStatusBadge = document.getElementById('conversion-status-badge');
+    const btnPlay = document.getElementById('btn-play');
+    const btnDownload = document.getElementById('btn-download');
+    const audioProgress = document.getElementById('audio-progress');
+    const playerTimeCurrent = document.getElementById('player-time-current');
+    const playerTimeTotal = document.getElementById('player-time-total');
+    const vBars = document.getElementById('v-bars');
+
+    // UI Event Listeners
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('drop-active');
+    });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drop-active'));
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('drop-active');
+      if (e.dataTransfer.files.length) {
+        handleFileSelect(e.dataTransfer.files[0]);
+      }
+    });
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length) {
+        handleFileSelect(e.target.files[0]);
+      }
+    });
+    btnClearLog.addEventListener('click', () => {
+      consoleOutput.innerHTML = '<div class="text-gray-500 italic">Console cleared.</div>';
+    });
+
+    btnConvert.addEventListener('click', processMidiConversion);
+    btnDownload.addEventListener('click', downloadConvertedMidi);
+    btnPlay.addEventListener('click', togglePreviewPlayback);
+
+    // Logging helper
+    function log(msg, type = 'info') {
+      const line = document.createElement('div');
+      const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      
+      let colorClass = 'text-gray-300';
+      let prefix = '[INFO]';
+      
+      if (type === 'success') {
+        colorClass = 'text-emerald-400 font-semibold';
+        prefix = '[SUCCESS]';
+      } else if (type === 'warn') {
+        colorClass = 'text-amber-400';
+        prefix = '[WARN]';
+      } else if (type === 'error') {
+        colorClass = 'text-rose-400 font-semibold';
+        prefix = '[ERROR]';
+      } else if (type === 'process') {
+        colorClass = 'text-brand-400';
+        prefix = '[PROC]';
+      }
+
+      line.className = colorClass;
+      line.innerHTML = `<span class="text-gray-600 select-none">${time}</span> <span class="font-semibold">${prefix}</span> ${msg}`;
+      consoleOutput.appendChild(line);
+      consoleOutput.scrollTop = consoleOutput.scrollHeight;
+    }
+
+    // Handle File Loading
+    function handleFileSelect(file) {
+      if (!file.name.match(/\.(mid|midi)$/i)) {
+        log('Selected file is not a valid MIDI file extension (.mid/.midi)', 'error');
+        return;
+      }
+
+      originalFileName = file.name;
+      infoFilename.textContent = file.name;
+      infoSize.textContent = (file.size / 1024).toFixed(1) + ' KB';
+
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        rawMidiArrayBuffer = e.target.result;
+        log(`File loaded: "${file.name}" (${file.size} bytes)`, 'info');
+        parseAndAnalyzeInputMidi();
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    /**
+     * Binary Variable Length Quantity (VLQ) Reader/Writer
+     */
+    function readVLQ(dataView, offset) {
+      let value = 0;
+      let bytesRead = 0;
+      let byte = 0;
+      do {
+        byte = dataView.getUint8(offset + bytesRead);
+        value = (value << 7) | (byte & 0x7F);
+        bytesRead++;
+      } while (byte & 0x80);
+      return { value, bytesRead };
+    }
+
+    function writeVLQ(value) {
+      let buffer = [];
+      let bufferVal = value & 0x7F;
+      
+      while (value >>= 7) {
+        bufferVal <<= 8;
+        bufferVal |= ((value & 0x7F) | 0x80);
+      }
+
+      while (true) {
+        buffer.push(bufferVal & 0xFF);
+        if (bufferVal & 0x80) {
+          bufferVal >>= 8;
+        } else {
+          break;
+        }
+      }
+      return buffer;
+    }
+
+    /**
+     * Inspect and parse input MIDI structure
+     */
+    function parseAndAnalyzeInputMidi() {
+      try {
+        const view = new DataView(rawMidiArrayBuffer);
+        // Header Chunk check "MThd"
+        const headerType = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
+        if (headerType !== 'MThd') {
+          throw new Error('Invalid MIDI file header: Missing MThd chunk');
+        }
+
+        const format = view.getUint16(8);
+        const tracksCount = view.getUint16(10);
+        const division = view.getUint16(12);
+
+        log(`MIDI Header Parsed: Format ${format}, ${tracksCount} Track(s), Division: ${division} PPQ`, 'process');
+
+        // Parse events across tracks to count total note events
+        let totalNoteEvents = 0;
+        let trackOffsets = [];
+        let ptr = 14;
+
+        for (let i = 0; i < tracksCount; i++) {
+          if (ptr >= view.byteLength) break;
+          const trkHead = String.fromCharCode(view.getUint8(ptr), view.getUint8(ptr+1), view.getUint8(ptr+2), view.getUint8(ptr+3));
+          if (trkHead !== 'MTrk') {
+            ptr += 8 + view.getUint32(ptr + 4);
+            continue;
+          }
+          const trkLen = view.getUint32(ptr + 4);
+          const trkStart = ptr + 8;
+          trackOffsets.push({ start: trkStart, length: trkLen });
+
+          // Fast event scan for note counting
+          let cur = trkStart;
+          let end = trkStart + trkLen;
+          let runningStatus = 0;
+
+          while (cur < end) {
+            const delta = readVLQ(view, cur);
+            cur += delta.bytesRead;
+
+            let status = view.getUint8(cur);
+            if (status & 0x80) {
+              runningStatus = status;
+              cur++;
+            } else {
+              status = runningStatus;
+            }
+
+            const type = status & 0xF0;
+            if (type === 0x90) { // Note On
+              const vel = view.getUint8(cur + 1);
+              if (vel > 0) totalNoteEvents++;
+              cur += 2;
+            } else if (type === 0x80 || type === 0xA0 || type === 0xB0 || type === 0xE0) {
+              cur += 2;
+            } else if (type === 0xC0 || type === 0xD0) {
+              cur += 1;
+            } else if (status === 0xFF) { // Meta Event
+              const metaType = view.getUint8(cur);
+              cur++;
+              const metaLen = readVLQ(view, cur);
+              cur += metaLen.bytesRead + metaLen.value;
+            } else if (status === 0xF0 || status === 0xF7) { // Sysex
+              const sysLen = readVLQ(view, cur);
+              cur += sysLen.bytesRead + sysLen.value;
+            } else {
+              cur++;
+            }
+          }
+
+          ptr = trkStart + trkLen;
+        }
+
+        parsedMidiData = { format, tracksCount, division, trackOffsets };
+
+        // Update UI Stats
+        infoTracks.textContent = tracksCount;
+        infoNotes.textContent = totalNoteEvents;
+        infoPpq.textContent = division;
+        fileDetailsPanel.classList.remove('hidden');
+
+        // Reset result panel if loaded new file
+        resultCard.classList.add('opacity-50', 'pointer-events-none');
+        conversionStatusBadge.classList.add('hidden');
+        stopPreviewPlayback();
+
+      } catch (err) {
+        log(`Failed to parse MIDI file: ${err.message}`, 'error');
+        fileDetailsPanel.classList.add('hidden');
+      }
+    }
+
+    /**
+     * CORE CONVERSION LOGIC
+     * Unifies all events into absolute timing ticks, strips extraneous instrument changes,
+     * forces Channel 0 with Piano Program Change, re-sorts events, calculates deltas,
+     * and constructs standard single-track binary MIDI data.
+     */
+    function processMidiConversion() {
+      if (!rawMidiArrayBuffer || !parsedMidiData) return;
+
+      log('--- Starting Multi-Track to Single Piano Conversion ---', 'process');
+      const view = new DataView(rawMidiArrayBuffer);
+      let allAbsoluteEvents = [];
+
+      // Step 1: Extract events with absolute ticks
+      for (let t = 0; t < parsedMidiData.trackOffsets.length; t++) {
+        const { start, length } = parsedMidiData.trackOffsets[t];
+        let cur = start;
+        let end = start + length;
+        let absTicks = 0;
+        let runningStatus = 0;
+
+        while (cur < end) {
+          const delta = readVLQ(view, cur);
+          cur += delta.bytesRead;
+          absTicks += delta.value;
+
+          let status = view.getUint8(cur);
+          if (status & 0x80) {
+            runningStatus = status;
+            cur++;
+          } else {
+            status = runningStatus;
+          }
+
+          const eventType = status & 0xF0;
+
+          // Skip existing Program Change messages (we force standard piano on channel 0)
+          if (eventType === 0xC0) {
+            cur += 1;
+            continue;
+          }
+
+          if (eventType === 0x80 || eventType === 0x90 || eventType === 0xA0 || eventType === 0xB0 || eventType === 0xE0) {
+            let data1 = view.getUint8(cur);
+            let data2 = view.getUint8(cur + 1);
+            cur += 2;
+
+            // Map all note and controller events to Channel 0
+            const forcedStatus = eventType | 0x00;
+
+            allAbsoluteEvents.push({
+              absTicks: absTicks,
+              isMeta: false,
+              status: forcedStatus,
+              data: [data1, data2]
+            });
+          } else if (eventType === 0xD0) {
+            let data1 = view.getUint8(cur);
+            cur += 1;
+            allAbsoluteEvents.push({
+              absTicks: absTicks,
+              isMeta: false,
+              status: 0xD0,
+              data: [data1]
+            });
+          } else if (status === 0xFF) { // Meta Event
+            const metaType = view.getUint8(cur);
+            cur++;
+            const metaLen = readVLQ(view, cur);
+            cur += metaLen.bytesRead;
+
+            let metaBytes = [];
+            for (let i = 0; i < metaLen.value; i++) {
+              metaBytes.push(view.getUint8(cur + i));
+            }
+            cur += metaLen.value;
+
+            // Filter out End of Track meta (we will add one at the very end)
+            if (metaType !== 0x2F) {
+              allAbsoluteEvents.push({
+                absTicks: absTicks,
+                isMeta: true,
+                metaType: metaType,
+                data: metaBytes
+              });
+            }
+          } else if (status === 0xF0 || status === 0xF7) { // Sysex
+            const sysLen = readVLQ(view, cur);
+            cur += sysLen.bytesRead + sysLen.value;
+          } else {
+            cur++;
+          }
+        }
+      }
+
+      log(`Collected ${allAbsoluteEvents.length} total raw MIDI events. Sorting by absolute ticks...`, 'process');
+
+      // Step 2: Sort all events chronologically by absolute tick
+      allAbsoluteEvents.sort((a, b) => a.absTicks - b.absTicks);
+
+      // Step 3: Build Single Track Events starting with Piano Program Change (0)
+      let finalTrackBytes = [];
+
+      // Add Program Change = 0 (Acoustic Grand Piano) at tick 0
+      // Delta = 0, Status = 0xC0 (Program Change, Channel 0), Program = 0
+      finalTrackBytes.push(0x00, 0xC0, 0x00);
+
+      let lastAbsTick = 0;
+      let totalNoteCountProcessed = 0;
+
+      for (let evt of allAbsoluteEvents) {
+        let delta = evt.absTicks - lastAbsTick;
+        if (delta < 0) delta = 0;
+        lastAbsTick = evt.absTicks;
+
+        // Write Delta Time
+        const deltaBytes = writeVLQ(delta);
+        finalTrackBytes.push(...deltaBytes);
+
+        if (evt.isMeta) {
+          finalTrackBytes.push(0xFF, evt.metaType);
+          const lenBytes = writeVLQ(evt.data.length);
+          finalTrackBytes.push(...lenBytes);
+          finalTrackBytes.push(...evt.data);
+        } else {
+          finalTrackBytes.push(evt.status);
+          finalTrackBytes.push(...evt.data);
+          if ((evt.status & 0xF0) === 0x90 && evt.data[1] > 0) {
+            totalNoteCountProcessed++;
+          }
+        }
+      }
+
+      // Append End of Track Meta Event (00 FF 2F 00)
+      finalTrackBytes.push(0x00, 0xFF, 0x2F, 0x00);
+
+      log(`Single track generated with ${totalNoteCountProcessed} active piano note events.`, 'process');
+
+      // Step 4: Construct complete binary MIDI file (Format 0, 1 track)
+      const headerLength = 14;
+      const trackHeaderLength = 8;
+      const totalFileSize = headerLength + trackHeaderLength + finalTrackBytes.length;
+
+      const buffer = new ArrayBuffer(totalFileSize);
+      const outView = new DataView(buffer);
+
+      // MThd Magic
+      outView.setUint8(0, 0x4D); outView.setUint8(1, 0x54); outView.setUint8(2, 0x68); outView.setUint8(3, 0x64);
+      outView.setUint32(4, 6); // Header data length
+      outView.getUint16 ? outView.setUint16(8, 0) : null; // Format 0
+      outView.setUint16(10, 1); // Track count = 1
+      outView.setUint16(12, parsedMidiData.division); // Retain original PPQ division
+
+      // MTrk Magic
+      outView.setUint8(14, 0x4D); outView.setUint8(15, 0x54); outView.setUint8(16, 0x72); outView.setUint8(17, 0x6B);
+      outView.setUint32(18, finalTrackBytes.length);
+
+      // Copy Track Bytes
+      const u8Array = new Uint8Array(buffer, 22);
+      u8Array.set(finalTrackBytes);
+
+      convertedMidiBytes = buffer;
+
+      // Create Blob URL for download/playback
+      const blob = new Blob([buffer], { type: 'audio/midi' });
+      if (convertedMidiUrl) URL.revokeObjectURL(convertedMidiUrl);
+      convertedMidiUrl = URL.createObjectURL(blob);
+
+      // Estimate total duration
+      totalDuration = (lastAbsTick / parsedMidiData.division) * 0.5; // Default ~120 BPM estimate
+      playerTimeTotal.textContent = formatTime(totalDuration);
+
+      // Update UI Result Section
+      const outputName = `piano_single_${originalFileName.replace(/\.[^/.]+$/, "")}.mid`;
+      resultFilename.textContent = outputName;
+      resultCard.classList.remove('opacity-50', 'pointer-events-none');
+      conversionStatusBadge.classList.remove('hidden');
+
+      log(`Successfully generated standard Format 0 MIDI file: "${outputName}"`, 'success');
+    }
+
+    /**
+     * Download Generated MIDI File
+     */
+    function downloadConvertedMidi() {
+      if (!convertedMidiUrl) return;
+      const a = document.createElement('a');
+      a.href = convertedMidiUrl;
+      a.download = resultFilename.textContent;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      log(`Downloaded: ${resultFilename.textContent}`, 'info');
+    }
+
+    /**
+     * BUILT-IN WEB AUDIO SYNTHESIZER FOR PIANO PREVIEW
+     * Converts notes from generated MIDI into Web Audio API synthesized notes.
+     */
+    function initAudioContext() {
+      if (!audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    function midiNoteToFreq(note) {
+      return 440 * Math.pow(2, (note - 69) / 12);
+    }
+
+    // Realistic Synthetic Piano Sound using Web Audio Oscillators & Envelope
+    function playPianoNote(freq, time, duration, velocity) {
+      if (!audioCtx) return;
+
+      const normVel = Math.min(1, Math.max(0.1, velocity / 127));
+      
+      // Primary harmonics
+      const osc1 = audioCtx.createOscillator();
+      const osc2 = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      osc1.type = 'triangle';
+      osc2.type = 'sine';
+
+      osc1.frequency.setValueAtTime(freq, time);
+      osc2.frequency.setValueAtTime(freq * 2, time); // 1st harmonic overshoot
+
+      // Gain Envelope (ADSR tailored for piano sound)
+      gainNode.gain.setValueAtTime(0, time);
+      gainNode.gain.linearRampToValueAtTime(0.4 * normVel, time + 0.015); // Quick attack
+      gainNode.gain.exponentialRampToValueAtTime(0.15 * normVel, time + 0.2); // Decay
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, time + Math.max(duration, 0.4)); // Release
+
+      osc1.connect(gainNode);
+      osc2.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      osc1.start(time);
+      osc2.start(time);
+      osc1.stop(time + duration + 0.5);
+      osc2.stop(time + duration + 0.5);
+    }
+
+    function togglePreviewPlayback() {
+      if (isPlaying) {
+        stopPreviewPlayback();
+      } else {
+        startPreviewPlayback();
+      }
+    }
+
+    function startPreviewPlayback() {
+      if (!convertedMidiBytes) return;
+      initAudioContext();
+
+      isPlaying = true;
+      btnPlay.innerHTML = `<i class="fa-solid fa-square text-rose-400"></i> Stop Preview`;
+      vBars.classList.add('playing');
+      log('Starting live preview playback...', 'info');
+
+      // Schedule notes from the output MIDI file
+      const view = new DataView(convertedMidiBytes);
+      const trackStart = 22; // Skip MThd and MTrk headers
+      const trackLength = view.getUint32(18);
+      let cur = trackStart;
+      let end = trackStart + trackLength;
+
+      let absTicks = 0;
+      let tempoBPM = 120; // Default tempo
+      let secondsPerTick = (60 / tempoBPM) / parsedMidiData.division;
+
+      let now = audioCtx.currentTime + 0.1;
+      startTime = now;
+
+      // Active notes map for note duration calculation
+      let activeNoteOnMap = {};
+
+      while (cur < end) {
+        const delta = readVLQ(view, cur);
+        cur += delta.bytesRead;
+        absTicks += delta.value;
+
+        let status = view.getUint8(cur);
+        if (status === 0xFF) { // Meta Event
+          const metaType = view.getUint8(cur + 1);
+          const metaLen = readVLQ(view, cur + 2);
+          const dataOffset = cur + 2 + metaLen.bytesRead;
+
+          if (metaType === 0x51 && metaLen.value === 3) { // Tempo change
+            const microsecondsPerQuarter = (view.getUint8(dataOffset) << 16) | (view.getUint8(dataOffset + 1) << 8) | view.getUint8(dataOffset + 2);
+            tempoBPM = 60000000 / microsecondsPerQuarter;
+            secondsPerTick = (microsecondsPerQuarter / 1000000) / parsedMidiData.division;
+          }
+          cur = dataOffset + metaLen.value;
+        } else {
+          const type = status & 0xF0;
+          if (type === 0x90) {
+            const note = view.getUint8(cur + 1);
+            const vel = view.getUint8(cur + 2);
+            cur += 3;
+
+            const noteTime = now + (absTicks * secondsPerTick);
+
+            if (vel > 0) {
+              activeNoteOnMap[note] = { time: noteTime, vel: vel };
+            } else { // Vel = 0 => Note Off
+              if (activeNoteOnMap[note]) {
+                const startEvt = activeNoteOnMap[note];
+                const duration = Math.max(0.1, noteTime - startEvt.time);
+                playPianoNote(midiNoteToFreq(note), startEvt.time, duration, startEvt.vel);
+                delete activeNoteOnMap[note];
+              }
+            }
+          } else if (type === 0x80) {
+            const note = view.getUint8(cur + 1);
+            cur += 3;
+            const noteTime = now + (absTicks * secondsPerTick);
+
+            if (activeNoteOnMap[note]) {
+              const startEvt = activeNoteOnMap[note];
+              const duration = Math.max(0.1, noteTime - startEvt.time);
+              playPianoNote(midiNoteToFreq(note), startEvt.time, duration, startEvt.vel);
+              delete activeNoteOnMap[note];
+            }
+          } else {
+            // Other events
+            cur += (type === 0xC0 || type === 0xD0) ? 2 : 3;
+          }
+        }
+      }
+
+      totalDuration = (absTicks * secondsPerTick);
+      playerTimeTotal.textContent = formatTime(totalDuration);
+
+      // Visual Progress Timer
+      playbackInterval = setInterval(() => {
+        if (!isPlaying) return;
+        const elapsed = audioCtx.currentTime - startTime;
+        if (elapsed >= totalDuration) {
+          stopPreviewPlayback();
+          return;
+        }
+        const pct = Math.min(100, (elapsed / totalDuration) * 100);
+        audioProgress.style.width = pct + '%';
+        playerTimeCurrent.textContent = formatTime(elapsed);
+      }, 100);
+    }
+
+    function stopPreviewPlayback() {
+      isPlaying = false;
+      if (playbackInterval) clearInterval(playbackInterval);
+      btnPlay.innerHTML = `<i class="fa-solid fa-play text-brand-400"></i> Preview Piano`;
+      vBars.classList.remove('playing');
+      audioProgress.style.width = '0%';
+      playerTimeCurrent.textContent = '0:00';
+    }
+
+    function formatTime(seconds) {
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    }
+  </script>
+</body>
+</html>
